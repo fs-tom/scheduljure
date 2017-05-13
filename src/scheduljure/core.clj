@@ -102,9 +102,9 @@
 
 ;return the stack, weeks, roster
 (defn make-roster
-"Takes a sequence of names stacked in order of precedence for
-the schedule, a sequence of start days for each week, and a 
-map of start days to sets of unavailable names for each week. "
+  "Takes a sequence of names stacked in order of precedence for
+  the schedule, a sequence of start days for each week, and a 
+  map of start days to sets of unavailable names for each week. "
   [names weeks unavailables]
   (loop [pool names
          wks weeks
@@ -117,7 +117,7 @@ map of start days to sets of unavailable names for each week. "
             poolcheck (if (= nxt "Whoever is here")
                         newpool
                         (vec-conj newpool nxt))]
-       (recur poolcheck (rest wks) (conj roster nxt))))))
+        (recur poolcheck (rest wks) (conj roster nxt))))))
 
 (defn input-intro
   "Given a first name string, generate a header and instructions for

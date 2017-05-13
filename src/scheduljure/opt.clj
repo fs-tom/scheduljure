@@ -33,23 +33,14 @@
 ;;  We never assign a name to an unavailable slot.
 ;;  We maximize the average distance between adjacent security checks.
 
-(def names ["Rick" "Tom" "Craig"])
-(def all-names (set names))
+(def names ["Rick" "Tom" "Craig" "Bob"])
 
-(def unavailables {"04-10-2017" #{"Rick"}
-                   "04-17-2017" #{"Rick" "Craig"}})
+(def unavailables  {"04-10-2017" #{"Rick"}
+                    "04-17-2017" #{"Rick" "Craig" "Tom"}
+                    "04-24-2017" #{"Tom"}})
 
-(def us {"04-10-2017" #{"Rick"}
-                   "04-17-2017" #{"Rick" "Craig" "Tom"}})
-
-(def weeks ["04-03-2017" "04-10-2017" "04-17-2017" "04-24-2017"])
-
-(def week->idx (into {} (map-indexed #(vector %2 %1) weeks)))
-(def idx->week (into {} (map-indexed #(vector %1 %2) weeks)))
-
-
-(def availability (into {} (for [[w s] unavailables]
-                             [(week->idx w) s])))
+(def weeks ["04-03-2017" "04-10-2017" "04-17-2017" "04-24-2017"
+            "05-01-2017" "05-08-2017"])
 
 ;;given a vector of names, a map of [week -> set unvailable-names]
 ;;and and a wk :: int, provides a screen collection of
@@ -69,16 +60,19 @@
 ;;measured by the square of the distance of the
 ;;week-index-difference from the goal of 4.  So,
 ;;"adjacent" i.e. closer weeks are punished more.
-(def ^:dynamic *num-people* 4)
-(defn bad-weeks [xs]
-  (->> xs
-       (reduce (fn [[acc p] n]                 
-                 (if-let [res (and p (- n p))]
-                   (if (< res *num-people*)
-                     [(+ acc (Math/pow (- *num-people* res) 2)) n]
-                     [acc n])
-                   [acc n])) [0 nil])
-       (first)))
+(def ^:dynamic *target* (min (count names) 4))
+(defn bad-weeks
+  ([target xs]
+   (->> xs
+        (reduce (fn [[acc p] n]                 
+                  (if-let [res (and p (- n p))]
+                    (if (< res target)
+                      [(+ acc (Math/pow (- target res) 2)) n]
+                      [acc n])
+                    [acc n])) [0 nil])
+        (first)))
+  ([xs] (bad-weeks *target* xs)))
+  
 
 ;;Our cost function is just the sum of bad weeks for a solution,
 ;;which is the sum of squared distance from the per-user
@@ -92,38 +86,43 @@
 
 ;;We dumbly alter our solution by picking a random week
 ;;and altering the decision according to our constraints.
-(defn flip! [s wk->choices]
-  (let [idx  (rand-int (count s))
-        old  (nth s idx)
-        nebs (wk->choices idx)]
-    (assoc s idx (rand-nth nebs))))
+(defn flip!
+  ([s wk->choices offset size]
+   (let [idx  (+ offset (rand-int size))
+         old  (nth s idx)
+         nebs (wk->choices idx)]
+     (assoc s idx (rand-nth nebs))))
+  ([s wk->choices] (flip! s wk->choices 0 (count s))))
 
 ;;Generate a random initial solution to start flipping.
 (defn random-solution [names uns wks]
   (->> (count wks)
        (range)
-       (mapv (comp rand-nth #(choices names uns (idx->week %))))))
+       (mapv (comp rand-nth #(choices names uns %)))))
 
 ;;Dumb stochastic hill-climber that only accepts improving
 ;;solutions.
-
 (defn schedule!
-  [nms uns wks & {:keys [max-it max-time prev-rost]
+  [nms uns wks & {:keys [max-it max-time prev-rost target]
                   :or {max-it 10000 prev-rost []}}]
-  (binding [*num-people* (count nms)]
-   (let [wk->choices #(choices nms uns (idx->week %))]
-     (loop [idx      0
-            sol      (random-solution nms uns wks)
-            solcost  (cost (concat prev-rost sol))]
-       (if (or (zero? solcost)
-               (>= idx max-it))
-         {:cost solcost :sol sol}
-         (let [nxt     (flip! sol wk->choices)
-               cnext   (cost    (concat prev-rost nxt)) ;;would like to compute cost with last roster, too
-               accept? (< cnext solcost)]       
-           (recur (unchecked-inc  idx)
-                  (if accept? nxt sol)
-                  (if accept? cnext solcost))))))))
+  (let [wk->choices #(choices nms uns %) #_(idx->week %)
+        offset (count prev-rost)
+        size   (count wks)]
+    (loop [idx      0
+           sol      (into prev-rost (random-solution nms uns wks))
+           solcost  (cost sol)]
+      (if (or (zero? solcost)
+              (>= idx max-it))
+        {:cost solcost :sol sol}
+        (let [nxt     (flip! sol wk->choices offset size)
+              cnext   (cost nxt)
+              accept? (< cnext solcost)] 
+          (recur (unchecked-inc  idx)
+                 (if accept? nxt sol)
+                 (if accept? cnext solcost)))))))
+
+(defn schedule-test! []
+  (schedule! names unavailables weeks :max-it 100000))
 
 ;;Exercise for the reader:
 ;;Do it using simulated annealing :)
